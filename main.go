@@ -63,15 +63,15 @@ func (w *World) Step() error {
 	}
 	for i := 1; i < w.buf.Shape()[0]-1; i++ {
 		for j := 1; j < w.buf.Shape()[1]-1; j++ {
-			sum, err := w.buf.Slice(S(i-1, i+2), S(j-1, j+2))
+			slice, err := w.buf.Slice(S(i-1, i+2), S(j-1, j+2))
 			if err != nil {
 				return err
 			}
-			a, err := tensor.Sum(sum)
+			sum, err := tensor.Sum(slice)
 			if err != nil {
 				return err
 			}
-			s := int(a.Data().(float64) - w.b[i][j])
+			s := int(sum.Data().(float64) - w.b[i][j])
 			for _, b := range w.Rule.B {
 				if s == b {
 					w.A[i-1][j-1] = 1
@@ -106,10 +106,11 @@ type Rule struct {
 }
 
 func main() {
-	w, _ := NewWorld(tensor.Shape{9, 9}, Rule{[]int{3}, []int{2, 3}})
-	w.Set(CV{1, 1, 1}, CV{1, 2, 1}, CV{2, 1, 1})
+	w, _ := NewWorld(tensor.Shape{9, 9}, Rule{[]int{1, 3, 5, 7}, []int{1, 3, 5, 7}})
+	w.Set(CV{1, 1, 1})
 	fmt.Printf("%v\n", w.Rule)
 	fmt.Printf("%#v\n%v\n", w.W, w.A)
+
 	for i := 0; i < 10; i++ {
 		w.Step()
 		fmt.Printf("%#v\n", w.W)
