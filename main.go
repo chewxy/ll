@@ -1,9 +1,6 @@
-package main
+package ll
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/pkg/errors"
 	"gorgonia.org/tensor"
 	"gorgonia.org/tensor/native"
@@ -22,7 +19,7 @@ const (
 type World struct {
 	Rule
 	G *tensor.Dense
-	a [][]float64
+	A [][]float64
 
 	// processing
 	buf  *tensor.Dense
@@ -34,7 +31,7 @@ type World struct {
 	topology         Topology
 }
 
-func NewWorld(s tensor.Shape, r Rule) (*World, error) {
+func New(s tensor.Shape, r Rule, topology Topology, isOuterIso bool) (*World, error) {
 	if s.Dims() != 2 {
 		return nil, errors.Errorf("Only two dimensional shapes are allowed. Got %v instead", s)
 	}
@@ -58,17 +55,20 @@ func NewWorld(s tensor.Shape, r Rule) (*World, error) {
 	}
 	return &World{
 		G:    w,
-		a:    a,
+		A:    a,
 		buf:  buf,
 		b:    b,
 		view: view.(*tensor.Dense),
 		Rule: r,
+
+		topology:         topology,
+		isOuterIsotropic: isOuterIso,
 	}, nil
 }
 
 func (w *World) Set(cs ...CV) {
 	for _, c := range cs {
-		w.a[c.Y][c.X] = c.V
+		w.A[c.Y][c.X] = c.V
 	}
 }
 func (w *World) Step() error {
@@ -112,7 +112,7 @@ func (w *World) Step() error {
 
 			for _, b := range w.Rule.B {
 				if s == b {
-					w.a[i-1][j-1] = 1
+					w.A[i-1][j-1] = 1
 					break
 				}
 			}
@@ -124,7 +124,7 @@ func (w *World) Step() error {
 				}
 			}
 			if !survives {
-				w.a[i-1][j-1] = 0
+				w.A[i-1][j-1] = 0
 			}
 		}
 	}
@@ -141,18 +141,4 @@ type CV struct {
 type Rule struct {
 	B []int
 	S []int
-}
-
-func main() {
-	w, _ := NewWorld(tensor.Shape{3, 3}, Rule{[]int{2, 3}, []int{3}})
-	w.topology = Torus
-	w.Set(CV{0, 2, 1}, CV{1, 2, 1}, CV{2, 2, 1})
-	fmt.Printf("%#v\n", w.G)
-
-	for i := 0; i < 5; i++ {
-		w.Step()
-		fmt.Printf("%#v\n", w.G)
-		time.Sleep(time.Second)
-	}
-
 }
