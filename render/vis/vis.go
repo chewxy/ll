@@ -2,7 +2,6 @@ package vis
 
 import (
 	"image/color"
-	"log"
 
 	"github.com/chewxy/ll"
 	"github.com/hajimehoshi/ebiten"
@@ -51,7 +50,7 @@ func (g G) handleMouse(x, y int) {
 
 	j := y / int(g.scaleH)
 	i := x / int(g.scaleW)
-	log.Printf("(%d %d), %v %v | %d %d %v", x, y, g.scaleH, g.scaleW, i, j, g.A[i][j])
+
 	switch g.A[i][j] {
 	case 0.0:
 		g.A[i][j] = 1
@@ -60,6 +59,5 @@ func (g G) handleMouse(x, y int) {
 	default:
 		panic("Cannot handle non-binary numbers")
 	}
-	log.Printf("%v", g.A[i][j])
 
 }
