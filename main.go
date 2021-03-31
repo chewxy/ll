@@ -9,15 +9,29 @@ import (
 	"gorgonia.org/tensor/native"
 )
 
+type Topology int
+
+const (
+	Plane Topology = iota
+	CylinderH
+	CylinderV
+	Torus
+)
+
 // World represents the world in which the cells live and die in.
 type World struct {
-	W *tensor.Dense
-	A [][]float64
+	Rule
+	G *tensor.Dense
+	a [][]float64
 
+	// processing
 	buf  *tensor.Dense
 	b    [][]float64
 	view *tensor.Dense // buf, but same size as W
-	Rule
+
+	// config
+	isOuterIsotropic bool
+	topology         Topology
 }
 
 func NewWorld(s tensor.Shape, r Rule) (*World, error) {
@@ -43,8 +57,8 @@ func NewWorld(s tensor.Shape, r Rule) (*World, error) {
 		return nil, err
 	}
 	return &World{
-		W:    w,
-		A:    a,
+		G:    w,
+		a:    a,
 		buf:  buf,
 		b:    b,
 		view: view.(*tensor.Dense),
@@ -54,12 +68,32 @@ func NewWorld(s tensor.Shape, r Rule) (*World, error) {
 
 func (w *World) Set(cs ...CV) {
 	for _, c := range cs {
-		w.A[c.Y][c.X] = c.V
+		w.a[c.Y][c.X] = c.V
 	}
 }
 func (w *World) Step() error {
-	if err := tensor.Copy(w.view, w.W); err != nil {
+	w.buf.Zero()
+	if err := tensor.Copy(w.view, w.G); err != nil {
 		return err
+	}
+	switch w.topology {
+	case Plane:
+	case Torus:
+		fallthrough
+	case CylinderH:
+		for i := range w.b {
+			w.b[i][0] = w.b[i][len(w.b[i])-2]
+			w.b[i][len(w.b)-1] = w.b[i][1]
+		}
+		if w.topology != Torus {
+			break
+		}
+		fallthrough
+	case CylinderV:
+		copy(w.b[0], w.b[len(w.b)-2])
+		copy(w.b[len(w.b)-1], w.b[1])
+	default:
+		return errors.Errorf("Topology %v not supported", w.topology)
 	}
 	for i := 1; i < w.buf.Shape()[0]-1; i++ {
 		for j := 1; j < w.buf.Shape()[1]-1; j++ {
@@ -71,10 +105,14 @@ func (w *World) Step() error {
 			if err != nil {
 				return err
 			}
-			s := int(sum.Data().(float64) - w.b[i][j])
+			s := int(sum.Data().(float64))
+			if w.isOuterIsotropic {
+				s -= int(w.b[i][j])
+			}
+
 			for _, b := range w.Rule.B {
 				if s == b {
-					w.A[i-1][j-1] = 1
+					w.a[i-1][j-1] = 1
 					break
 				}
 			}
@@ -86,7 +124,7 @@ func (w *World) Step() error {
 				}
 			}
 			if !survives {
-				w.A[i-1][j-1] = 0
+				w.a[i-1][j-1] = 0
 			}
 		}
 	}
@@ -106,14 +144,14 @@ type Rule struct {
 }
 
 func main() {
-	w, _ := NewWorld(tensor.Shape{9, 9}, Rule{[]int{1, 3, 5, 7}, []int{1, 3, 5, 7}})
-	w.Set(CV{1, 1, 1})
-	fmt.Printf("%v\n", w.Rule)
-	fmt.Printf("%#v\n%v\n", w.W, w.A)
+	w, _ := NewWorld(tensor.Shape{3, 3}, Rule{[]int{2, 3}, []int{3}})
+	w.topology = Torus
+	w.Set(CV{0, 2, 1}, CV{1, 2, 1}, CV{2, 2, 1})
+	fmt.Printf("%#v\n", w.G)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		w.Step()
-		fmt.Printf("%#v\n", w.W)
+		fmt.Printf("%#v\n", w.G)
 		time.Sleep(time.Second)
 	}
 
