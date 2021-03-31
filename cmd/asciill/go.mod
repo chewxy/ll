@@ -1,7 +1,5 @@
 module main
 
-replace github.com/chewxy/ll => /home/chewxy/workspace/gorgoniaws/src/github.com/chewxy/ll
-
 go 1.15
 
 require (
