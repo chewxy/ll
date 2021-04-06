@@ -22,3 +22,14 @@ func S(s ...int) sli {
 func (s sli) Start() int { return s.s }
 func (s sli) End() int   { return s.e }
 func (s sli) Step() int  { return s.t }
+
+func Sum(a *tensor.Dense, it tensor.Iterator) float64 {
+	it.Reset()
+	data := a.Data().([]float64)
+	var sum float64
+
+	for i, err := it.Start(); err == nil; i, err = it.Next() {
+		sum += data[i]
+	}
+	return sum
+}

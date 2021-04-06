@@ -1,6 +1,10 @@
 package ll
 
 import (
+	"fmt"
+	"runtime"
+	"sync"
+
 	"github.com/pkg/errors"
 	"gorgonia.org/tensor"
 	"gorgonia.org/tensor/native"
@@ -14,6 +18,8 @@ const (
 	CylinderV
 	Torus
 )
+
+var numproc int = runtime.NumCPU()
 
 // World represents the world in which the cells live and die in.
 type World struct {
@@ -95,41 +101,71 @@ func (w *World) Step() error {
 	default:
 		return errors.Errorf("Topology %v not supported", w.topology)
 	}
-	for i := 1; i < w.buf.Shape()[0]-1; i++ {
-		for j := 1; j < w.buf.Shape()[1]-1; j++ {
-			slice, err := w.buf.Slice(S(i-1, i+2), S(j-1, j+2))
-			if err != nil {
-				return err
-			}
-			sum, err := tensor.Sum(slice)
-			if err != nil {
-				return err
-			}
-			s := int(sum.Data().(float64))
-			if w.isOuterIsotropic {
-				s -= int(w.b[i][j])
-			}
 
-			for _, b := range w.Rule.B {
-				if s == b {
-					w.A[i-1][j-1] = 1
-					break
-				}
-			}
-			var survives bool
-			for _, ss := range w.Rule.S {
-				if s == ss {
-					survives = true
-					break
-				}
-			}
-			if !survives {
-				w.A[i-1][j-1] = 0
-			}
+	ch := make(chan vit, numproc)
+	wch := make(chan struct{}, numproc)
+	var wg sync.WaitGroup
+
+	// populate ch
+	for i := 0; i < numproc; i++ {
+		slice, err := w.buf.Slice(S(0, 3), S(0, 3))
+		if err != nil {
+			return errors.Wrapf(err, "Cannot do default slice")
+		}
+		it := slice.Iterator()
+		ch <- vit{slice.(*tensor.Dense), it}
+	}
+
+	for i := 1; i < w.buf.Shape()[0]-1; i++ {
+
+		for j := 1; j < w.buf.Shape()[1]-1; j++ {
+			wg.Add(1)
+			go w.analyze(ch, wch, &wg, i, j)
 		}
 	}
+	wg.Wait()
 	// process here
 	return nil
+}
+
+func (w *World) analyze(ch chan vit, wch chan struct{}, wg *sync.WaitGroup, i, j int) {
+	wch <- struct{}{}
+	t := <-ch
+	_, err := w.buf.SliceInto(t.fst, S(i-1, i+2), S(j-1, j+2))
+	if err != nil {
+		panic(fmt.Sprintf("%v", errors.Wrap(err, "Cannot slice into the given view")))
+	}
+	sum := Sum(t.fst, t.snd)
+	s := int(sum)
+	if w.isOuterIsotropic {
+		s -= int(w.b[i][j])
+	}
+
+	for _, b := range w.Rule.B {
+		if s == b {
+			w.A[i-1][j-1] = 1
+			break
+		}
+	}
+	var survives bool
+	for _, ss := range w.Rule.S {
+		if s == ss {
+			survives = true
+			break
+		}
+	}
+	if !survives {
+		w.A[i-1][j-1] = 0
+	}
+	ch <- t
+	<-wch
+	wg.Done()
+
+}
+
+type vit struct {
+	fst *tensor.Dense
+	snd tensor.Iterator
 }
 
 type CV struct {
